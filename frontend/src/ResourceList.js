@@ -17,11 +17,11 @@ const ResourceList = ({ resources, onDeleteResource }) => {
   };
 
   // 打开删除确认模态框
-  const openDeleteModal = (resource) => {
-    setResourceToDelete(resource);
-    setDeleteError(null);
-    setIsDeleteModalOpen(true);
-  };
+  // const openDeleteModal = (resource) => {
+  //   setResourceToDelete(resource);
+  //   setDeleteError(null);
+  //   setIsDeleteModalOpen(true);
+  // };
 
   // 关闭删除确认模态框
   const closeDeleteModal = () => {
@@ -81,7 +81,7 @@ const ResourceList = ({ resources, onDeleteResource }) => {
                 <th className="py-2 px-4 border-b text-left">已使用</th>
                 <th className="py-2 px-4 border-b text-left">利用率</th>
                 <th className="py-2 px-4 border-b text-left">状态</th>
-                <th className="py-2 px-4 border-b text-left">操作</th>
+                {/* <th className="py-2 px-4 border-b text-left">操作</th> */}
               </tr>
             </thead>
             <tbody>
@@ -119,7 +119,7 @@ const ResourceList = ({ resources, onDeleteResource }) => {
                         {resource.status === 'available' ? '可用' : '不可用'}
                       </span>
                     </td>
-                    <td className="py-2 px-4 border-b">
+                    {/* <td className="py-2 px-4 border-b">
                       <button
                         className="text-red-500 hover:text-red-700"
                         onClick={() => openDeleteModal(resource)}
@@ -127,7 +127,7 @@ const ResourceList = ({ resources, onDeleteResource }) => {
                       >
                         删除
                       </button>
-                    </td>
+                    </td> */}
                   </tr>
                 );
               })}

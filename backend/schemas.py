@@ -23,7 +23,6 @@ class ResourceType(str, Enum):
 class TaskBase(BaseModel):
     name: str
     type: str
-    priority: int = 1
     resource_requirements: Dict[str, Any]
 
 

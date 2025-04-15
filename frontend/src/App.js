@@ -296,38 +296,20 @@ const Dashboard = () => {
     const mockResources = [
       {
         id: 1,
-        name: "Server-A",
+        name: "CPU资源池",
         type: "cpu",
-        capacity: 16,
-        used: 12,
-        utilization: 75,
+        capacity: 64, // 总CPU核心数
+        used: 28, // 已使用的CPU核心数
+        utilization: 43.75, // 使用率
         status: "available",
       },
       {
         id: 2,
-        name: "Server-B",
-        type: "cpu",
-        capacity: 32,
-        used: 8,
-        utilization: 25,
-        status: "available",
-      },
-      {
-        id: 3,
-        name: "GPU-Cluster-1",
-        type: "gpu",
-        capacity: 8,
-        used: 7,
-        utilization: 87.5,
-        status: "available",
-      },
-      {
-        id: 4,
-        name: "Memory-Node-1",
+        name: "内存资源池",
         type: "memory",
-        capacity: 128,
-        used: 64,
-        utilization: 50,
+        capacity: 256, // 总内存容量(GB)
+        used: 128, // 已使用内存(GB)
+        utilization: 50, // 使用率
         status: "available",
       },
     ];
@@ -339,7 +321,8 @@ const Dashboard = () => {
         type: "training",
         status: "running",
         priority: 3,
-        resource_id: 3,
+        resource_requirements: { cpu: 4, memory: 16 }, // 新增：任务所需资源
+        resource_id: null, // 不再指向具体服务器，改为null或资源池ID
         waiting_time: null,
         execution_time: 120,
       },
@@ -349,8 +332,9 @@ const Dashboard = () => {
         type: "processing",
         status: "pending",
         priority: 2,
+        resource_requirements: { cpu: 2, memory: 6 },
         resource_id: null,
-        waiting_time: 45,
+        waiting_time: null,
         execution_time: null,
       },
       {
@@ -359,6 +343,7 @@ const Dashboard = () => {
         type: "analysis",
         status: "completed",
         priority: 1,
+        resource_requirements: { cpu: 4, memory: 4 },
         resource_id: 1,
         waiting_time: null,
         execution_time: 78,
@@ -369,6 +354,7 @@ const Dashboard = () => {
         type: "service",
         status: "running",
         priority: 3,
+        resource_requirements: { cpu: 16, memory: 4 },
         resource_id: 2,
         waiting_time: null,
         execution_time: 360,
@@ -379,6 +365,7 @@ const Dashboard = () => {
         type: "backup",
         status: "pending",
         priority: 1,
+        resource_requirements: { cpu: 6, memory: 6 },
         resource_id: null,
         waiting_time: 12,
         execution_time: null,
@@ -388,7 +375,7 @@ const Dashboard = () => {
     const mockUtilizationHistory = mockResources.map((resource) => {
       const history = Array.from({ length: 30 }, (_, i) => ({
         time: new Date(Date.now() - (29 - i) * 60000).toLocaleTimeString(),
-        value: Math.floor(Math.random() * 50) + resource.utilization - 25,
+        value: Math.floor(Math.random() * 20) + resource.utilization - 10,
       }));
 
       return {
@@ -570,15 +557,6 @@ const Dashboard = () => {
     network: "🌐",
   };
 
-  // 资源成本颜色映射
-  const costColors = {
-    cpu: "#4CAF50", // 绿色
-    gpu: "#FF5722", // 橙红色
-    memory: "#2196F3", // 蓝色
-    storage: "#9C27B0", // 紫色
-    network: "#795548", // 棕色
-  };
-
   // 处理新资源和任务添加
   // const handleResourceAdded = (newResource) => {
   //   // 更新资源列表
@@ -596,11 +574,7 @@ const Dashboard = () => {
 
   // 处理资源和任务删除
   const handleDeleteResource = async (resourceId) => {
-    if (
-      !window.confirm(
-        "确定要删除此资源吗？如果有任务正在使用此资源，将无法删除。"
-      )
-    ) {
+    if (!window.confirm("确定要减少此资源池容量吗？")) {
       return;
     }
 
@@ -638,6 +612,31 @@ const Dashboard = () => {
     }
   };
 
+  // 在渲染前计算总开销数据
+  const calculateTotalCostData = () => {
+    // 确保有数据可用
+    if (!resourceCosts.length) return [];
+
+    // 假设所有资源的历史时间点相同
+    const timePoints = resourceCosts[0].history.map((point) => point.time);
+
+    // 创建总成本数据数组
+    return timePoints.map((time, index) => {
+      // 对每个时间点，计算所有资源的成本总和
+      const totalValue = resourceCosts.reduce((sum, resource) => {
+        return sum + (resource.history[index]?.value || 0);
+      }, 0);
+
+      return {
+        time: time,
+        value: totalValue,
+      };
+    });
+  };
+
+  // 计算总成本数据
+  const totalCostData = calculateTotalCostData();
+
   return (
     <div className="p-4 bg-gray-100 min-h-screen">
       {/* 标题栏 */}
@@ -662,7 +661,7 @@ const Dashboard = () => {
       {/* 状态卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded shadow">
-          <div className="text-gray-500 mb-2">资源总数</div>
+          <div className="text-gray-500 mb-2">资源类型</div>
           <div className="text-3xl font-bold">{resources.length}</div>
         </div>
         <div className="bg-white p-4 rounded shadow">
@@ -740,13 +739,13 @@ const Dashboard = () => {
                   <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm mr-2">
                     {resource.utilization.toFixed(1)}%
                   </span>
-                  <button
+                  {/* <button
                     className="text-red-500 hover:text-red-700"
                     onClick={() => handleDeleteResource(resource.id)}
                     title="删除资源"
                   >
                     🗑️
-                  </button>
+                  </button> */}
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={100}>
@@ -771,49 +770,38 @@ const Dashboard = () => {
 
       {/* 资源租赁开销动态变化曲线 */}
       <div className="bg-white p-4 rounded shadow mb-6">
-        <h2 className="text-lg font-semibold mb-4">资源租赁开销动态变化</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {resourceCosts.map((resource) => (
-            <div key={resource.id} className="border p-3 rounded">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-medium">
-                  {typeIcons[resource.type]} {resource.name}
-                </h3>
-                <div className="flex items-center">
-                  <span
-                    className="px-2 py-1 rounded text-sm mr-2"
-                    style={{
-                      backgroundColor: `${costColors[resource.type]}20`,
-                      color: costColors[resource.type],
-                    }}
-                  >
-                    {resource.history[
-                      resource.history.length - 1
-                    ]?.value.toFixed(2)}
-                    元/小时
-                  </span>
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={100}>
-                <LineChart data={resource.history}>
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    stroke={costColors[resource.type] || "#8884d8"}
-                    dot={false}
-                  />
-                  <XAxis dataKey="time" hide />
-                  <YAxis hide />
-                  <Tooltip
-                    formatter={(value) => [
-                      `${value.toFixed(2)}元/小时`,
-                      "租赁成本",
-                    ]}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ))}
+        <h2 className="text-lg font-semibold mb-4">资源租赁总开销动态变化</h2>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={totalCostData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="time" />
+            <YAxis name="总成本 (元/小时)" />
+            <Tooltip
+              formatter={(value) => [
+                `${value.toFixed(2)}元/小时`,
+                "总租赁成本",
+              ]}
+            />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="value"
+              name="资源总开销"
+              stroke="#8884d8"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 8 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+
+        {/* 可选：显示当前总开销 */}
+        <div className="mt-4 text-center">
+          <span className="text-xl font-semibold">
+            当前总开销:{" "}
+            {totalCostData[totalCostData.length - 1]?.value.toFixed(2) || 0}{" "}
+            元/小时
+          </span>
         </div>
       </div>
 
@@ -864,9 +852,8 @@ const Dashboard = () => {
                   </td>
                   <td className="py-2 px-4 border-b">{task.priority}</td>
                   <td className="py-2 px-4 border-b">
-                    {task.resource_id
-                      ? resources.find((r) => r.id === task.resource_id)
-                          ?.name || task.resource_id
+                    {task.resource_requirements
+                      ? `CPU: ${task.resource_requirements.cpu}核, 内存: ${task.resource_requirements.memory}GB`
                       : "-"}
                   </td>
                   <td className="py-2 px-4 border-b">

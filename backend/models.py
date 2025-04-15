@@ -18,23 +18,27 @@ class ResourceType(enum.Enum):
     STORAGE = "storage"
     NETWORK = "network"
 
+class TaskResourceAssociation(Base):
+    __tablename__ = "task_resource_association"
+
+    task_id = Column(Integer, ForeignKey("tasks.id"), primary_key=True)
+    resource_id = Column(Integer, ForeignKey("resources.id"), primary_key=True)
+
 class Task(Base):
     __tablename__ = "tasks"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), index=True)
     type = Column(String(255), index=True)
-    priority = Column(Integer, default=1)
     status = Column(Enum(TaskStatus), default=TaskStatus.PENDING)
-    resource_requirements = Column(JSON)  # 例如: {"cpu": 2, "memory": 4, "gpu": 1}
+    resource_requirements = Column(JSON)  # 例如: {"cpu": 2, "memory": 4, "len": 10}
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     result = Column(JSON, nullable=True)
     
     # 关联到分配的资源
-    resource_id = Column(Integer, ForeignKey("resources.id"), nullable=True)
-    resource = relationship("Resource", back_populates="assigned_tasks")
+    resources = relationship("Resource", secondary="task_resource_association", back_populates="tasks")
     
     def get_execution_time(self):
         if self.started_at and self.completed_at:
@@ -53,7 +57,7 @@ class Resource(Base):
     meta_data = Column(JSON, nullable=True)
     
     # 关联到分配的任务
-    assigned_tasks = relationship("Task", back_populates="resource")
+    tasks = relationship("Task", secondary="task_resource_association", back_populates="resources")
     
     def get_utilization(self):
         if self.capacity > 0:
