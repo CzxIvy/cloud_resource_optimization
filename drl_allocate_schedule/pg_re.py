@@ -2,15 +2,12 @@ import time
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from torch.profiler import schedule
 
 import environment
 import job_distribution
 import slow_down_cdf
 import torch
-import torch.nn as nn
 import pg_network
-import pg_network_lstm
 
 def discount(x, gamma):
     """
@@ -65,73 +62,6 @@ def get_traj(schedule_agent, allocate_actor, env, episode_max_length):
             allocate_transition_dict['actions'].append(allocate_action)
             allocate_transition_dict['next_states'].append(state)
             allocate_transition_dict['rewards'].append(sum(schedule_reward) - 0.5*cost)
-            allocate_transition_dict['costs'].append(cost)
-            allocate_transition_dict['dones'].append(done)
-
-            allocate_state = state
-            allocate_action = allocate_next_action
-            schedule_reward = []
-
-        if done:
-            break
-
-    return {'transition': transition_dict,
-            'allocate_transition': allocate_transition_dict,
-            'info': info}
-
-
-def get_traj_preprocessed(schedule_agent, allocate_actor, env, episode_max_length, fixed_width=350):
-    """
-    使用预处理状态的轨迹收集函数
-    """
-    env.reset()
-
-    info = []
-    transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'dones': []}
-    allocate_transition_dict = {'states': [], 'actions': [], 'next_states': [], 'rewards': [], 'costs': [], 'dones': []}
-
-    # 预处理函数 - 在收集轨迹时就调整状态宽度
-    def preprocess_state(state):
-        # 转换为PyTorch张量
-        if not isinstance(state, torch.Tensor):
-            state = torch.tensor(np.asarray(state), dtype=torch.float)
-
-        # 确保是4D: [batch, channel, height, width]
-        if len(state.shape) == 3:  # [channel, height, width]
-            state = state.unsqueeze(0)
-
-        # 使用自适应池化调整宽度
-        adaptive_pool = nn.AdaptiveAvgPool2d((None, fixed_width))
-        return adaptive_pool(state).numpy()
-
-    state = env.observe()
-    allocate_action = 0
-    allocate_state = state
-    schedule_reward = []
-
-    for i in range(episode_max_length):
-        action = schedule_agent.take_action(preprocess_state(state).squeeze(0))
-
-        next_state, reward, done, info = env.schedule_step(action)
-
-        # 收集预处理后的状态
-        transition_dict['states'].append(preprocess_state(state).squeeze(0))
-        transition_dict['actions'].append(action)
-        transition_dict['next_states'].append(preprocess_state(next_state).squeeze(0))
-        transition_dict['rewards'].append(reward)
-        transition_dict['dones'].append(done)
-
-        schedule_reward.append(reward)
-        state = next_state
-
-        if (i + 1) % 5 == 0:
-            allocate_next_action = allocate_actor.take_action(preprocess_state(state).squeeze(0))
-            cost = env.allocate_step(allocate_next_action)
-
-            allocate_transition_dict['states'].append(preprocess_state(allocate_state).squeeze(0))
-            allocate_transition_dict['actions'].append(allocate_action)
-            allocate_transition_dict['next_states'].append(preprocess_state(state).squeeze(0))
-            allocate_transition_dict['rewards'].append(sum(schedule_reward) - 0.5 * cost)
             allocate_transition_dict['costs'].append(cost)
             allocate_transition_dict['dones'].append(done)
 
@@ -224,15 +154,6 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
 
     action_dim = pa.network_output_dim
     allocate_action_dim = 8
-
-    # 初始化自适应LSTM策略网络
-    # fixed_width = 350
-    # schedule_agent = pg_network_lstm.Adaptive_LSTM_PPO(hidden_dim, action_dim, actor_lr, critic_lr, lmbda,
-    #                                    epochs, eps, gamma, device, fixed_width)
-
-    # 初始化LSTM策略网络
-    # schedule_agent = pg_network_lstm.LSTM_PPO(350, hidden_dim, action_dim, actor_lr, critic_lr, lmbda,
-    #                           epochs, eps, gamma, device)
 
     # schedule_agent = pg_network.PPO(hidden_dim, action_dim, actor_lr, critic_lr, lmbda,
     #             epochs, eps, gamma, device)
