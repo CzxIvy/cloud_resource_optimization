@@ -361,7 +361,7 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
 
         if iteration % pa.output_freq == 0:
 
-            schedule_agent.save_data(pa.output_filename + '_' + str(iteration))
+            schedule_actor.save_data(pa.output_filename + '_' + str(iteration))
 
             pa.unseen = True
             # slow_down_cdf.launch(pa, pa.output_filename + '_' + str(iteration) + '.ckpt',
