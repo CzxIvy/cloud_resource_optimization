@@ -3,9 +3,39 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
-from sympy import print_tree
 
 import rl_utils
+
+def create_mask(input_tensor, pad_value=-1):
+    # 输入形状: (batch_size, channels, height, width)
+    # 生成掩码：非填充位置为1，填充位置为0（按通道维度取"或"）
+    mask = (input_tensor != pad_value).any(dim=1, keepdim=True)  # (B, 1, H, W)
+    return mask.float()
+
+
+class MaskedSpatialAttention(nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+        # 通道压缩 + 空间注意力权重生成
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, 1, kernel_size=1),  # 压缩到单通道
+            nn.Sigmoid()  # 输出注意力权重 [0,1]
+        )
+
+    def forward(self, x, mask):
+        # x形状: (B, C, H, W)
+        # mask形状: (B, 1, H, W)
+
+        # Step 1: 生成空间注意力权重
+        attention = self.conv(x)  # (B, 1, H, W)
+
+        # Step 2: 应用掩码，将填充区域的注意力权重置零
+        masked_attention = attention * mask
+
+        # Step 3: 对特征图加权
+        weighted_x = x * masked_attention
+
+        return weighted_x
 
 class PolicyNet(nn.Module):
     def __init__(self, hidden_dim, action_dim):
@@ -25,23 +55,36 @@ class PolicyNet(nn.Module):
         x = F.relu(self.fc5(x))
         return F.softmax(self.fc6(x), dim=1)
 
-class ValueNet(nn.Module):
+class ValueNetWithAttention(nn.Module):
     def __init__(self, hidden_dim):
-        super(ValueNet, self).__init__()
-        self.fc1 = torch.nn.Conv2d(1, 6, kernel_size=5, padding=2)
-        self.fc2 = torch.nn.AvgPool2d(kernel_size=2, stride=2)
-        self.fc3 = nn.AdaptiveAvgPool2d((10, 175))
-        self.fc4 = torch.nn.Flatten()
-        self.fc5 = torch.nn.Linear(10500, hidden_dim)
-        self.fc6 = torch.nn.Linear(hidden_dim, 1)
+        super(ValueNetWithAttention, self).__init__()
+        self.cnn = nn.Sequential(
+            nn.Conv2d(1, 6, kernel_size=5, padding=2),
+            nn.ReLU(),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+            nn.AdaptiveAvgPool2d((10, 175))
+        )
+
+        # 空间注意力模块
+        self.attention = MaskedSpatialAttention(in_channels=6)
+
+        self.fc = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(10500, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.fc2(x)
-        x = self.fc3(x)
-        x = self.fc4(x)
-        x = F.relu(self.fc5(x))
-        return self.fc6(x)
+        mask = create_mask(x)  # (B, 1, H, W)
+        features = self.cnn(x)
+        # 下采样掩码以匹配特征图尺寸
+        mask_downsampled = torch.nn.functional.adaptive_max_pool2d(
+            mask, (10, 175)
+        )
+        attended_features = self.attention(features, mask_downsampled)
+        output = self.fc(attended_features)
+        return output
 
 
 class PPO:
@@ -49,7 +92,7 @@ class PPO:
     def __init__(self, hidden_dim, action_dim, actor_lr, critic_lr,
                  lmbda, epochs, eps, gamma, device):
         self.actor = PolicyNet(hidden_dim, action_dim).to(device)
-        self.critic = ValueNet(hidden_dim).to(device)
+        self.critic = ValueNetWithAttention(hidden_dim).to(device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
                                                 lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),

@@ -155,8 +155,8 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
     action_dim = pa.network_output_dim
     allocate_action_dim = 8
 
-    # schedule_agent = pg_network.PPO(hidden_dim, action_dim, actor_lr, critic_lr, lmbda,
-    #             epochs, eps, gamma, device)
+    schedule_agent = pg_network.PPO(hidden_dim, action_dim, actor_lr, critic_lr, lmbda,
+                epochs, eps, gamma, device)
 
     schedule_actor = pg_network.GRPO(hidden_dim, action_dim, actor_lr, gamma, epochs, eps, device)
     allocate_actor = pg_network.AllocateActor(hidden_dim, allocate_action_dim, allocate_lr, device)
@@ -240,7 +240,8 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
         transition_dict['states'] = np.array(states_padded)
         transition_dict['actions'] = np.concatenate([traj['transition']['actions'] for traj in trajs], dtype=np.int64)
         transition_dict['next_states'] = np.array(states_padded_)
-        transition_dict['rewards'] = np.concatenate(rew_adv_list_)
+        # transition_dict['rewards'] = np.concatenate(rew_adv_list_)
+        transition_dict['rewards'] = np.concatenate([traj['transition']['rewards'] for traj in trajs])
         transition_dict['dones'] = np.concatenate([traj['transition']['dones'] for traj in trajs])
 
 
@@ -259,7 +260,8 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
         allocate_transition_dict['rewards'] = np.concatenate(rew_adv_list)
         allocate_transition_dict['dones'] = np.concatenate([traj['allocate_transition']['dones'] for traj in trajs])
 
-        schedule_actor.update(transition_dict)
+        # schedule_actor.update(transition_dict)
+        schedule_agent.update(transition_dict)
         allocate_actor.update(allocate_transition_dict)
 
         timer_end = time.time()
