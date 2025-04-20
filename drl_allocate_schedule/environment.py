@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import copy
 
 class Env:
     def __init__(self, pa, job_seq = None,
@@ -56,7 +57,7 @@ class Env:
         if self.repre == 'image':
             backlog_width = int(math.ceil(self.pa.backlog_size / float(self.pa.time_horizon)))
 
-            network_input_width = int((self.machine_cluster.res_slot + self.pa.max_task_size * self.pa.num_nw)
+            network_input_width = int((self.machine_cluster.max_res_slot + self.pa.max_task_size * self.pa.num_nw)
                                        * self.pa.num_res + self.pa.backlog_size/self.pa.time_horizon + 3)
             image_repr = np.zeros((self.pa.time_horizon, network_input_width))
 
@@ -64,8 +65,8 @@ class Env:
 
             for i in range(self.pa.num_res):
 
-                image_repr[:, ir_pt: ir_pt + self.machine_cluster.res_slot] = self.machine_cluster.canvas[i, :, :]
-                ir_pt += self.machine_cluster.res_slot
+                image_repr[:, ir_pt: ir_pt + self.machine_cluster.max_res_slot] = self.machine_cluster.canvas[i, :, :]
+                ir_pt += self.machine_cluster.max_res_slot
 
                 for j in range(self.pa.num_nw):
 
@@ -91,11 +92,15 @@ class Env:
                 mtype_cnt[m.type] += 1
             image_repr[:, ir_pt: ir_pt + 1] = mtype_cnt[0] / 5
             ir_pt += 1
-            image_repr[:, ir_pt: ir_pt + 1] = mtype_cnt[0] / 2
+            image_repr[:, ir_pt: ir_pt + 1] = mtype_cnt[1] / 2
 
             ir_pt += 1
 
-            assert ir_pt == image_repr.shape[1]
+            assert ir_pt == image_repr.shape[1], "fill up the image representation vector" + str(ir_pt) + " " + str(image_repr.shape[1])
+            
+            # 清理步骤：将接近零的小值设置为精确的零
+            epsilon = 1e-3  # 设置阈值
+            image_repr = np.where(np.abs(image_repr) < epsilon, 0.0, image_repr)
 
             return np.expand_dims(image_repr, axis=0)
 
@@ -247,27 +252,54 @@ class Env:
             mtype_cnt[m.type] += 1
 
         if a == 0:
+            self.machine_cluster.allocate_resource(0, 1 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 0 - mtype_cnt[1], self.curr_time)
+        elif a == 1:
+            self.machine_cluster.allocate_resource(0, 2 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 0 - mtype_cnt[1], self.curr_time)
+        elif a == 2:
+            self.machine_cluster.allocate_resource(0, 3 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 0 - mtype_cnt[1], self.curr_time)
+        elif a == 3:
+            self.machine_cluster.allocate_resource(0, 4 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 0 - mtype_cnt[1], self.curr_time)
+        elif a == 4:
+            self.machine_cluster.allocate_resource(0, 5 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 0 - mtype_cnt[1], self.curr_time)
+        elif a == 5:
+            self.machine_cluster.allocate_resource(0, 0 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 1 - mtype_cnt[1], self.curr_time)
+        elif a == 6:
+            self.machine_cluster.allocate_resource(0, 1 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 1 - mtype_cnt[1], self.curr_time)
+        elif a == 7:
             self.machine_cluster.allocate_resource(0, 2 - mtype_cnt[0], self.curr_time)
             self.machine_cluster.allocate_resource(1, 1 - mtype_cnt[1], self.curr_time)
-        elif a == 1:
+        elif a == 8:
             self.machine_cluster.allocate_resource(0, 3 - mtype_cnt[0], self.curr_time)
             self.machine_cluster.allocate_resource(1, 1 - mtype_cnt[1], self.curr_time)
-        elif a == 2:
+        elif a == 9:
             self.machine_cluster.allocate_resource(0, 4 - mtype_cnt[0], self.curr_time)
             self.machine_cluster.allocate_resource(1, 1 - mtype_cnt[1], self.curr_time)
-        elif a == 3:
+        elif a == 10:
             self.machine_cluster.allocate_resource(0, 5 - mtype_cnt[0], self.curr_time)
             self.machine_cluster.allocate_resource(1, 1 - mtype_cnt[1], self.curr_time)
-        elif a == 4:
+        elif a == 11:
+            self.machine_cluster.allocate_resource(0, 0 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 2 - mtype_cnt[1], self.curr_time)
+        elif a == 12:
+            self.machine_cluster.allocate_resource(0, 1 - mtype_cnt[0], self.curr_time)
+            self.machine_cluster.allocate_resource(1, 2 - mtype_cnt[1], self.curr_time)
+        elif a == 13:
             self.machine_cluster.allocate_resource(0, 2 - mtype_cnt[0], self.curr_time)
             self.machine_cluster.allocate_resource(1, 2 - mtype_cnt[1], self.curr_time)
-        elif a == 5:
+        elif a == 14:
             self.machine_cluster.allocate_resource(0, 3 - mtype_cnt[0], self.curr_time)
             self.machine_cluster.allocate_resource(1, 2 - mtype_cnt[1], self.curr_time)
-        elif a == 6:
+        elif a == 15:
             self.machine_cluster.allocate_resource(0, 4 - mtype_cnt[0], self.curr_time)
             self.machine_cluster.allocate_resource(1, 2 - mtype_cnt[1], self.curr_time)
-        elif a == 7:
+        elif a == 16:
             self.machine_cluster.allocate_resource(0, 5 - mtype_cnt[0], self.curr_time)
             self.machine_cluster.allocate_resource(1, 2 - mtype_cnt[1], self.curr_time)
 
@@ -315,11 +347,13 @@ class MachineCluster:
     def __init__(self, pa):
         self.num_res = pa.num_res
         self.time_horizon = pa.time_horizon
-        machine1, machine2, machine3 = Machine(0, 0), Machine(0, 0), Machine(1, 0)
-        self.machine_cluster = [machine1, machine2, machine3]
+        machine1, machine2 = Machine(0, 0), Machine(1, 0)
+        self.machine_cluster = [machine1, machine2]
         self.res_slot = 0
         for machine in self.machine_cluster:
             self.res_slot += machine.res_slot
+            
+        self.max_res_slot = 2 * 5 + 5 * 2
 
         self.avbl_slot = np.ones((self.time_horizon, self.num_res)) * self.res_slot
 
@@ -330,7 +364,8 @@ class MachineCluster:
         np.random.shuffle(self.colormap)
 
         # graphical representation
-        self.canvas = np.zeros((self.num_res, self.time_horizon, self.res_slot))
+        self.canvas = np.full((self.num_res, self.time_horizon, self.max_res_slot), -1)
+        self.canvas[:, :, : self.res_slot] = 0
 
     def allocate_resource(self, mtype, ope, time):
         new_res_slot = self.res_slot
@@ -358,11 +393,12 @@ class MachineCluster:
                 self.avbl_slot[:, :] += m.res_slot
                 new_res_slot += m.res_slot
 
-        new_canvas = np.zeros((self.num_res, self.time_horizon, new_res_slot))
+        new_canvas = np.full((self.num_res, self.time_horizon, self.max_res_slot), -1)
         if new_res_slot <= self.res_slot:
-            new_canvas = self.canvas[:, :, : new_res_slot]
+            new_canvas[:, :, : new_res_slot] = self.canvas[:, :, : new_res_slot]
         else:
-            new_canvas[:, :, : self.res_slot] = self.canvas
+            new_canvas[:, : , : new_res_slot] = 0
+            new_canvas[:, :, : self.res_slot] = self.canvas[:, :, : self.res_slot]
         self.canvas = new_canvas
         self.res_slot = new_res_slot
 
@@ -387,10 +423,13 @@ class MachineCluster:
                 # update graphical representation
                 used_color = np.unique(self.canvas[:])
                 # WARNING: there should be enough colors in the color map
+                flag = False
                 for color in self.colormap:
                     if color not in used_color:
                         new_color = color
+                        flag = True
                         break
+                assert flag, "Not enough colors in the colormap"
 
                 assert task.start_time != -1
                 assert task.finish_time != -1

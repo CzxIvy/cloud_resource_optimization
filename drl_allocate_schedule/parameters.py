@@ -3,13 +3,13 @@ import job_distribution
 class Parameters:
     def __init__(self):
 
-        self.output_filename = 'data/tmp'
+        self.output_filename = 'model/tmp'
 
         self.num_epochs = 10000         # number of training epochs
         self.job_min_simu_len = 20
-        self.job_max_simu_len = 35
-        self.task_max_simu_len = 8
-        self.task_min_simu_len = 2
+        self.job_max_simu_len = 80
+        self.task_max_simu_len = 6
+        self.task_min_simu_len = 1
         self.num_ex = 10                # number of sequences
 
         self.output_freq = 10          # interval for output and store parameters
@@ -42,9 +42,9 @@ class Parameters:
 
         self.network_output_dim = self.num_nw + 1  # + 1 for void action
 
-        self.delay_penalty = -1       # penalty for delaying things in the current work screen
-        self.hold_penalty = -1        # penalty for holding things in the new work screen
-        self.dismiss_penalty = -1     # penalty for missing a job because the queue is full
+        self.delay_penalty = -1.1       # penalty for delaying things in the current work screen
+        self.hold_penalty = -1.2        # penalty for holding things in the new work screen
+        self.dismiss_penalty = -1.3     # penalty for missing a job because the queue is full
 
         self.num_frames = 1           # number of frames to combine and process
         self.lr_rate = 0.001          # learning rate

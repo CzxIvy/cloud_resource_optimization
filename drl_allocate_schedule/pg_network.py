@@ -37,24 +37,36 @@ class MaskedSpatialAttention(nn.Module):
 
         return weighted_x
 
-class PolicyNet(nn.Module):
+class PolicyNetWithAttention(nn.Module):
     def __init__(self, hidden_dim, action_dim):
-        super(PolicyNet, self).__init__()
-        self.fc1 = torch.nn.Conv2d(1, 6, kernel_size=5, padding=2)
-        self.fc2 = torch.nn.AvgPool2d(kernel_size=2, stride=2)
-        self.fc3 = nn.AdaptiveAvgPool2d((10, 175))
-        self.fc4 = torch.nn.Flatten()
-        self.fc5 = torch.nn.Linear(10500, hidden_dim)
-        self.fc6 = torch.nn.Linear(hidden_dim, action_dim)
+        super(PolicyNetWithAttention, self).__init__()
+        self.cnn = nn.Sequential(
+            nn.Conv2d(1, 6, kernel_size=5, padding=2),
+            nn.ReLU(),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+        )
+        
+        self.attention = MaskedSpatialAttention(in_channels=6)
+        
+        self.fc = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(5880, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+            nn.Softmax(dim=-1)
+        )
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.fc2(x)
-        x = self.fc3(x)
-        x = self.fc4(x)
-        x = F.relu(self.fc5(x))
-        return F.softmax(self.fc6(x), dim=1)
-
+        mask = create_mask(x)  # (B, 1, H, W)
+        features = self.cnn(x)
+        # 下采样掩码以匹配特征图尺寸
+        mask_downsampled = torch.nn.functional.adaptive_avg_pool2d(
+            mask, (10, 98)
+        )
+        attended_features = self.attention(features, mask_downsampled)
+        output = self.fc(attended_features)
+        return output
+    
 class ValueNetWithAttention(nn.Module):
     def __init__(self, hidden_dim):
         super(ValueNetWithAttention, self).__init__()
@@ -62,7 +74,6 @@ class ValueNetWithAttention(nn.Module):
             nn.Conv2d(1, 6, kernel_size=5, padding=2),
             nn.ReLU(),
             nn.AvgPool2d(kernel_size=2, stride=2),
-            nn.AdaptiveAvgPool2d((10, 175))
         )
 
         # 空间注意力模块
@@ -70,7 +81,7 @@ class ValueNetWithAttention(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(10500, hidden_dim),
+            nn.Linear(5880, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, 1)
         )
@@ -79,8 +90,8 @@ class ValueNetWithAttention(nn.Module):
         mask = create_mask(x)  # (B, 1, H, W)
         features = self.cnn(x)
         # 下采样掩码以匹配特征图尺寸
-        mask_downsampled = torch.nn.functional.adaptive_max_pool2d(
-            mask, (10, 175)
+        mask_downsampled = torch.nn.functional.adaptive_avg_pool2d(
+            mask, (10, 98)
         )
         attended_features = self.attention(features, mask_downsampled)
         output = self.fc(attended_features)
@@ -91,7 +102,7 @@ class PPO:
     ''' PPO算法,采用截断方式 '''
     def __init__(self, hidden_dim, action_dim, actor_lr, critic_lr,
                  lmbda, epochs, eps, gamma, device):
-        self.actor = PolicyNet(hidden_dim, action_dim).to(device)
+        self.actor = PolicyNetWithAttention(hidden_dim, action_dim).to(device)
         self.critic = ValueNetWithAttention(hidden_dim).to(device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
                                                 lr=actor_lr)
@@ -151,10 +162,10 @@ class PPO:
         torch.save(self.actor.state_dict(), pg_resume + '_actor' + '.pth')
         torch.save(self.critic.state_dict(), pg_resume + '_critic' + '.pth')
 
-class GRPO:
+class GRPOForSchedule:
     ''' GRPO算法, 采用组内相对奖励方式 '''
     def __init__(self, hidden_dim, action_dim, actor_lr, gamma, epochs, eps, device):
-        self.actor = PolicyNet(hidden_dim, action_dim).to(device)
+        self.actor = PolicyNetWithAttention(hidden_dim, action_dim).to(device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.gamma = gamma
         self.epochs = epochs  # 数据用来训练的轮数
@@ -162,10 +173,17 @@ class GRPO:
         self.device = device
 
     def take_action(self, state):
-        state = torch.tensor(np.asarray([state]), dtype=torch.float).to(self.device)
+        state_ = torch.tensor(np.asarray([state]), dtype=torch.float).to(self.device)
         with torch.no_grad():
-            probs = self.actor(state)
-        action_dist = torch.distributions.Categorical(probs)
+            probs = self.actor(state_)
+        try:
+            action_dist = torch.distributions.Categorical(probs)
+        except Exception as e:
+            print(f"Error in action distribution: {e}")
+            print(f"state: {state}")
+            print(f"Probs: {probs}")
+            np.savetxt('error_state.txt', np.asarray(state[0]), fmt='%.6f', delimiter=',')
+            raise e
         action = action_dist.sample()
         return action.item()
 
@@ -188,58 +206,58 @@ class GRPO:
             self.actor_optimizer.step()
 
     def save_data(self, pg_resume):
-        torch.save(self.actor.state_dict(), pg_resume + '_actor' + '.pth')
+        torch.save(self.actor.state_dict(), pg_resume + '_schedule_actor' + '.pth')
+        
+    def load_data(self, pg_resume):
+        self.actor.load_state_dict(torch.load(pg_resume))
+        self.actor.eval()
 
 
-class AllocateActor(nn.Module):
-    def __init__(self, hidden_dim, action_dim, lr, device):
-        super(AllocateActor, self).__init__()
-
-        self.fc1 = torch.nn.Conv2d(1, 6, kernel_size=5, padding=2)
-        self.fc2 = torch.nn.AvgPool2d(kernel_size=2, stride=2)
-        self.fc3 = nn.AdaptiveAvgPool2d((10, 175))
-        self.fc4 = torch.nn.Flatten()
-        self.fc5 = torch.nn.Linear(10500, hidden_dim)
-        self.fc6 = torch.nn.Linear(hidden_dim, action_dim)
-
-        self.optimizer = optim.Adam(self.parameters(), lr=lr)
-        self.to(device)
+class GPROForAllocate:
+    def __init__(self, hidden_dim, action_dim, actor_lr, gamma, epochs, eps, device):
+        self.actor = PolicyNetWithAttention(hidden_dim, action_dim).to(device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.gamma = gamma
+        self.epochs = epochs
+        self.eps = eps
         self.device = device
 
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.fc2(x)
-        x = self.fc3(x)
-        x = self.fc4(x)
-        x = F.relu(self.fc5(x))
-        return F.softmax(self.fc6(x), dim=1)
-
     def take_action(self, state):
-        state = torch.tensor(np.asarray([state]), dtype=torch.float).to(self.device)
-        self.eval()
+        state_ = torch.tensor(np.asarray([state]), dtype=torch.float).to(self.device)
         with torch.no_grad():
-            probs = self.forward(state)
-        action_dist = torch.distributions.Categorical(probs)
+            probs = self.actor(state_)
+        try:
+            action_dist = torch.distributions.Categorical(probs)
+        except Exception as e:
+            print(f"Error in action distribution: {e}")
+            print(f"state: {state}")
+            print(f"Probs: {probs}")
+            np.savetxt('error_state.txt', np.asarray(state[0]), fmt='%.6f', delimiter=',')
+            raise e
         action = action_dist.sample()
         return action.item()
 
     def update(self, transition_dict):
-        self.train()
         states = torch.tensor(np.asarray(transition_dict['states']), dtype=torch.float).to(self.device)
-        actions = torch.tensor(transition_dict['actions'], dtype=torch.int64).view(-1, 1).to(self.device)
+        actions = torch.tensor(transition_dict['actions']).view(-1, 1).to(self.device)
         rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float).view(-1, 1).to(self.device)
-        dones = torch.tensor(transition_dict['dones'], dtype=torch.float).view(-1, 1).to(self.device)
 
-        log_probs = torch.log(self.forward(states).gather(1, actions))
-        loss = torch.mean(-(log_probs * rewards))
+        old_log_probs = torch.log(self.actor(states).gather(1, actions)).detach()
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        for _ in range(self.epochs):
+            log_probs = torch.log(self.actor(states).gather(1, actions))
+            ratio = torch.exp(log_probs - old_log_probs)
+            surr1 = ratio * rewards
+            surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * rewards
+            actor_loss = torch.mean(-torch.min(surr1, surr2))  # GRPO的损失函数
+
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
 
     def save_data(self, pg_resume):
-        torch.save(self.state_dict(), pg_resume + '.pth')
+        torch.save(self.actor.state_dict(), pg_resume + '_allocate_actor' + '.pth')
 
     def load_data(self, pg_resume):
-        self.load_state_dict(torch.load(pg_resume))
-        self.eval()  # Set the model to evaluation mode
+        self.actor.load_state_dict(torch.load(pg_resume))
+        self.actor.eval()
