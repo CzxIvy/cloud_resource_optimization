@@ -396,9 +396,11 @@ class MachineCluster:
         new_canvas = np.full((self.num_res, self.time_horizon, self.max_res_slot), -1)
         if new_res_slot <= self.res_slot:
             new_canvas[:, :, : new_res_slot] = self.canvas[:, :, : new_res_slot]
+            assert np.all(self.canvas[:, :, new_res_slot:] <= 0), "canvas should be empty" + str(self.canvas[:, :, new_res_slot:].sum())
         else:
             new_canvas[:, : , : new_res_slot] = 0
             new_canvas[:, :, : self.res_slot] = self.canvas[:, :, : self.res_slot]
+            assert np.all(self.canvas[:, :, self.res_slot:] <= 0), "canvas should be empty" + str(self.canvas[:, :, self.res_slot:].sum())
         self.canvas = new_canvas
         self.res_slot = new_res_slot
 
@@ -458,7 +460,9 @@ class MachineCluster:
 
         # update graphical representation
         self.canvas[:, :-1, :] = self.canvas[:, 1:, :]
-        self.canvas[:, -1, :] = 0
+        self.canvas[:, -1, :] = -1
+        self.canvas[:, -1, : self.res_slot] = 0
+        assert self.canvas.shape[-1] == self.max_res_slot, "canvas shape should be " + str(self.max_res_slot) + str(self.canvas.shape[-1])
 
 class Machine:
     def __init__(self, mtype=0, time=0):

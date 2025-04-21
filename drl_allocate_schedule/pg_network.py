@@ -50,7 +50,7 @@ class PolicyNetWithAttention(nn.Module):
         
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(5880, hidden_dim),
+            nn.Linear(10380, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
             nn.Softmax(dim=-1)
@@ -61,7 +61,7 @@ class PolicyNetWithAttention(nn.Module):
         features = self.cnn(x)
         # 下采样掩码以匹配特征图尺寸
         mask_downsampled = torch.nn.functional.adaptive_avg_pool2d(
-            mask, (10, 98)
+            mask, (10, 173)
         )
         attended_features = self.attention(features, mask_downsampled)
         output = self.fc(attended_features)
@@ -81,7 +81,7 @@ class ValueNetWithAttention(nn.Module):
 
         self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(5880, hidden_dim),
+            nn.Linear(10380, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, 1)
         )
@@ -91,7 +91,7 @@ class ValueNetWithAttention(nn.Module):
         features = self.cnn(x)
         # 下采样掩码以匹配特征图尺寸
         mask_downsampled = torch.nn.functional.adaptive_avg_pool2d(
-            mask, (10, 98)
+            mask, (10, 173)
         )
         attended_features = self.attention(features, mask_downsampled)
         output = self.fc(attended_features)

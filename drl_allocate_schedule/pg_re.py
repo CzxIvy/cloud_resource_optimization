@@ -61,7 +61,7 @@ def get_traj(schedule_actor, allocate_actor, env, episode_max_length):
             allocate_transition_dict['states'].append(allocate_state)
             allocate_transition_dict['actions'].append(allocate_action)
             allocate_transition_dict['next_states'].append(state)
-            allocate_transition_dict['rewards'].append(sum(schedule_reward) - 0.01*cost)
+            allocate_transition_dict['rewards'].append(sum(schedule_reward) - 0.1*cost)
             allocate_transition_dict['costs'].append(cost)
             allocate_transition_dict['dones'].append(done)
 
@@ -135,7 +135,7 @@ def plot_lr_curve(output_file_prefix, max_rew_lr_curve, mean_rew_lr_curve, slow_
     ax = fig.add_subplot(224)
     ax.set_prop_cycle('color', [matplotlib.cm.viridis(1. * i / num_colors) for i in range(num_colors)])
     ax.plot(cost_lr_curve, linewidth=2, label='Cost mean')
-    plt.legend(loc=1)
+    plt.legend(loc=4)
     plt.xlabel("Iteration", fontsize=20)
     plt.ylabel("Cost", fontsize=20)
 
@@ -153,7 +153,7 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
     actor_lr = 1e-3
     critic_lr = 3e-3
     allocate_lr = 1e-3
-    hidden_dim = 128
+    hidden_dim = 256
     gamma = 0.98
     # for PPO
     lmbda = 0.95
@@ -185,12 +185,6 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
     if pg_resume is not None:
         pass
 
-    # --------------------------------------
-    print("Preparing for reference data...")
-    # --------------------------------------
-
-    ref_discount_rews, ref_slow_down = slow_down_cdf.launch(pa, pg_resume=None, render=False,
-                                                            plot=False, repre=repre, end=end)
     mean_rew_lr_curve = []
     max_rew_lr_curve = []
     slow_down_lr_curve = []
@@ -303,11 +297,12 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
         allocate_transition_dict['rewards'] = np.concatenate(rew_adv_list)
         # allocate_transition_dict['rewards'] = np.concatenate([traj['allocate_transition']['rewards'] for traj in trajs])
         allocate_transition_dict['dones'] = np.concatenate([traj['allocate_transition']['dones'] for traj in trajs])
-
-        # schedule_agent.update(transition_dict)
+        
         schedule_actor.update(transition_dict)
-        # allocate_agent.update(allocate_transition_dict)
         allocate_actor.update(allocate_transition_dict)
+        # schedule_agent.update(transition_dict)
+        # allocate_agent.update(allocate_transition_dict)
+        
 
         timer_end = time.time()
 
@@ -327,7 +322,7 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
         max_rew_lr_curve.append(np.average([np.max(rew) for rew in eprewlist]))
         mean_rew_lr_curve.append(np.mean(eprewlist))
         slow_down_lr_curve.append(np.mean([np.mean(sd) for sd in slowdownlist]))
-        max_rew_lr_curve_.append(np.max([np.max(rew) for rew in eprewlist_]))
+        max_rew_lr_curve_.append(np.average([np.max(rew) for rew in eprewlist_]))
         mean_rew_lr_curve_.append(np.mean(eprewlist_))
         cost_lr_curve.append(np.mean(epcostlist))
 
@@ -354,7 +349,8 @@ def main():
     pa = parameters.Parameters()
 
     pa.num_ex = 10  # 100
-    pa.num_nw = 5
+    pa.num_nw = 10
+    pa.network_output_dim = pa.num_nw + 1
     pa.num_seq_per_batch = 10
     pa.output_freq = 50
     pa.batch_size = 10
