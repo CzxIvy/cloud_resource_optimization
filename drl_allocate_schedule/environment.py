@@ -70,7 +70,9 @@ class Env:
                 ir_pt += self.machine_cluster.max_res_slot
 
                 for j in range(self.pa.num_nw):
-
+                    
+                    image_repr[:, ir_pt: ir_pt + self.pa.max_task_size] = -1.0
+                    
                     if self.task_slot.slot[j] is not None:  # fill in a block of work
                         image_repr[: self.task_slot.slot[j].len, ir_pt: ir_pt + self.task_slot.slot[j].res_vec[i]] = 1
 
@@ -193,6 +195,14 @@ class Env:
                 self.seq_idx += 1
             else:
                 done = True
+            
+            # self.seq_idx += 1
+            # if self.seq_idx >= len(self.nw_len_seqs):
+            #     if len(self.machine_cluster.running_task) == 0 and \
+            #         all(s is not None for s in self.task_slot.slot) and \
+            #         all(s is not None for s in self.task_backlog.backlog):
+            #         done = True
+            
 
             if not done:
                 if self.seq_idx < len(self.nw_len_seqs):  # otherwise, end of new Task sequence, i.e. no new Tasks

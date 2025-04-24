@@ -26,13 +26,13 @@ class MaskedSpatialAttention(nn.Module):
         # x形状: (B, C, H, W)
         # mask形状: (B, 1, H, W)
 
-        # Step 1: 生成空间注意力权重
+        # 生成空间注意力权重
         attention = self.conv(x)  # (B, 1, H, W)
 
-        # Step 2: 应用掩码，将填充区域的注意力权重置零
+        # 应用掩码，将填充区域的注意力权重置零
         masked_attention = attention * mask
 
-        # Step 3: 对特征图加权
+        # 对特征图加权
         weighted_x = x * masked_attention
 
         return weighted_x
@@ -60,8 +60,8 @@ class PolicyNetWithAttention(nn.Module):
         mask = create_mask(x)  # (B, 1, H, W)
         features = self.cnn(x)
         # 下采样掩码以匹配特征图尺寸
-        mask_downsampled = torch.nn.functional.adaptive_avg_pool2d(
-            mask, (10, 173)
+        mask_downsampled = nn.functional.avg_pool2d(
+            mask, (2, 2)
         )
         attended_features = self.attention(features, mask_downsampled)
         output = self.fc(attended_features)
