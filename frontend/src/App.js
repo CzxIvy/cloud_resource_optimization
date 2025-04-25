@@ -36,11 +36,15 @@ const Dashboard = () => {
   // WebSocket连接状态
   const [connected, setConnected] = useState(false);
   const socketRef = useRef(null);
+  // 添加用于节流的上次更新时间引用
+  const lastUpdateTimeRef = useRef(0);
+  const throttleInterval = 500; // 限制500ms内最多更新一次
 
   // 处理从WebSocket接收的数据
   const handleWebSocketData = useCallback((data) => {
     // 更新资源状态
     if (data.resource_status) {
+      console.log("WebSocket资源数据:", data.resource_status);
       setResources(data.resource_status);
 
       // 更新资源利用率历史
@@ -62,8 +66,18 @@ const Dashboard = () => {
 
       // 更新资源租赁开销历史
       if (data.resource_costs) {
-        setResourceCosts(data.resource_costs);
+        console.log("WebSocket资源租赁开销数据:", data.resource_costs);
+        const costHistory = data.resource_costs.map((resource) => {
+          return {
+            ...resource,
+            cost: resource.cost,
+            history: resource.cost_history,
+          };
+        });
+        console.log("costHistory:", costHistory);
+        setResourceCosts(costHistory);
       } else {
+        // 如果没有成本数据，基于资源利用率生成模拟成本数据
         // 如果没有成本数据，基于资源利用率生成模拟成本数据
         const costHistory = data.resource_status.map((resource) => {
           // 假设成本与利用率相关，但有不同的基准值和波动
@@ -84,47 +98,51 @@ const Dashboard = () => {
               })),
           };
         });
-
         setResourceCosts(costHistory);
       }
     }
 
     // 更新任务状态
     if (data.task_status) {
+      console.log("WebSocket任务数据:", data.task_status);
       setTasks(data.task_status);
+    }
 
-      // 更新任务队列状态
-      const queueStatus = {
-        pending: data.task_status.filter((t) => t.status === "pending").length,
-        running: data.task_status.filter((t) => t.status === "running").length,
-        completed: data.task_status.filter((t) => t.status === "completed")
-          .length,
-        failed: data.task_status.filter((t) => t.status === "failed").length,
-        average_wait_time: 0,
-        average_execution_time: 0,
-      };
+    if (data.task_queue) {
+      console.log("WebSocket任务队列数据:", data.task_queue);
 
-      // 计算平均等待时间
-      const pendingTasks = data.task_status.filter(
-        (t) => t.status === "pending" && t.waiting_time
-      );
-      if (pendingTasks.length > 0) {
-        queueStatus.average_wait_time =
-          pendingTasks.reduce((sum, task) => sum + task.waiting_time, 0) /
-          pendingTasks.length;
-      }
+      // // 更新任务队列状态
+      // const queueStatus = {
+      //   pending: data.task_status.filter((t) => t.status === "pending").length,
+      //   running: data.task_status.filter((t) => t.status === "running").length,
+      //   completed: data.task_status.filter((t) => t.status === "completed")
+      //     .length,
+      //   failed: data.task_status.filter((t) => t.status === "failed").length,
+      //   average_wait_time: 0,
+      //   average_execution_time: 0,
+      // };
 
-      // 计算平均执行时间
-      const completedTasks = data.task_status.filter(
-        (t) => t.status === "completed" && t.execution_time
-      );
-      if (completedTasks.length > 0) {
-        queueStatus.average_execution_time =
-          completedTasks.reduce((sum, task) => sum + task.execution_time, 0) /
-          completedTasks.length;
-      }
+      // // 计算平均等待时间
+      // const pendingTasks = data.task_status.filter(
+      //   (t) => t.status === "pending" && t.waiting_time
+      // );
+      // if (pendingTasks.length > 0) {
+      //   queueStatus.average_wait_time =
+      //     pendingTasks.reduce((sum, task) => sum + task.waiting_time, 0) /
+      //     pendingTasks.length;
+      // }
 
-      setTaskQueueStatus(queueStatus);
+      // // 计算平均执行时间
+      // const completedTasks = data.task_status.filter(
+      //   (t) => t.status === "completed" && t.execution_time
+      // );
+      // if (completedTasks.length > 0) {
+      //   queueStatus.average_execution_time =
+      //     completedTasks.reduce((sum, task) => sum + task.execution_time, 0) /
+      //     completedTasks.length;
+      // }
+
+      setTaskQueueStatus(data.task_queue);
     }
   }, []);
 
@@ -132,17 +150,14 @@ const Dashboard = () => {
   const fetchData = useCallback(async () => {
     try {
       // 获取资源列表
-      const resourcesResponse = await fetch(
-        "http://localhost:8000/resources/",
-        {
-          method: "GET",
-          headers: {
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        }
-      );
+      const resourcesResponse = await fetch("http://localhost:8000/resources", {
+        method: "GET",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      });
       if (resourcesResponse.ok) {
         const resourcesData = await resourcesResponse.json();
         console.log("获取资源数据:", resourcesData);
@@ -150,10 +165,10 @@ const Dashboard = () => {
       }
 
       // 获取任务列表
-      const tasksResponse = await fetch("http://localhost:8000/tasks/");
+      const tasksResponse = await fetch("http://localhost:8000/tasks");
       if (tasksResponse.ok) {
         const tasksData = await tasksResponse.json();
-        console.log("获取资源数据:", tasksData);
+        console.log("获取任务数据:", tasksData);
         setTasks(tasksData);
       }
 
@@ -165,13 +180,6 @@ const Dashboard = () => {
         const utilizationData = await utilizationResponse.json();
         setResourceUtilization(utilizationData);
       }
-
-      // const utilizationResponse = await fetch('http://api.example.com/metrics/resource-utilization', {
-      //   method: 'GET',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      // });
 
       // 获取资源租赁开销数据
       try {
@@ -226,7 +234,12 @@ const Dashboard = () => {
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          handleWebSocketData(data);
+          const now = Date.now();
+          // 限制更新频率
+          if (now - lastUpdateTimeRef.current > throttleInterval) {
+            handleWebSocketData(data);
+            lastUpdateTimeRef.current = now;
+          }
         } catch (error) {
           console.error("处理WebSocket消息时出错:", error);
         }
@@ -524,14 +537,6 @@ const Dashboard = () => {
     return () => clearInterval(timer);
   }, [connected]); // 移除tasks依赖
 
-  // 计算任务类型分布
-  // const taskTypes = tasks.reduce((acc, task) => {
-  //   acc[task.type] = (acc[task.type] || 0) + 1;
-  //   return acc;
-  // }, {});
-
-  // const taskTypeData = Object.entries(taskTypes).map(([name, value]) => ({ name, value }));
-
   // 任务状态分布数据
   const taskStatusData = [
     { name: "待处理", value: taskQueueStatus.pending, color: "#FFBB28" },
@@ -556,21 +561,6 @@ const Dashboard = () => {
     storage: "💾",
     network: "🌐",
   };
-
-  // 处理新资源和任务添加
-  // const handleResourceAdded = (newResource) => {
-  //   // 更新资源列表
-  //   // setResources(prev => [...prev, newResource]);
-  //   // 也可以直接重新获取数据
-  //   fetchData();
-  // };
-
-  // const handleTaskAdded = (newTask) => {
-  //   // 更新任务列表
-  //   // setTasks(prev => [...prev, newTask]);
-  //   // 也可以直接重新获取数据
-  //   fetchData();
-  // };
 
   // 处理资源和任务删除
   const handleDeleteResource = async (resourceId) => {
@@ -611,31 +601,6 @@ const Dashboard = () => {
       alert("删除资源时出错，请检查网络连接");
     }
   };
-
-  // 在渲染前计算总开销数据
-  const calculateTotalCostData = () => {
-    // 确保有数据可用
-    if (!resourceCosts.length) return [];
-
-    // 假设所有资源的历史时间点相同
-    const timePoints = resourceCosts[0].history.map((point) => point.time);
-
-    // 创建总成本数据数组
-    return timePoints.map((time, index) => {
-      // 对每个时间点，计算所有资源的成本总和
-      const totalValue = resourceCosts.reduce((sum, resource) => {
-        return sum + (resource.history[index]?.value || 0);
-      }, 0);
-
-      return {
-        time: time,
-        value: totalValue,
-      };
-    });
-  };
-
-  // 计算总成本数据
-  const totalCostData = calculateTotalCostData();
 
   return (
     <div className="p-4 bg-gray-100 min-h-screen">
@@ -772,15 +737,15 @@ const Dashboard = () => {
       <div className="bg-white p-4 rounded shadow mb-6">
         <h2 className="text-lg font-semibold mb-4">资源租赁总开销动态变化</h2>
         <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={totalCostData}>
+          <LineChart data={resourceCosts[0]?.history}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="time" />
-            <YAxis name="总成本 (元/小时)" />
+            <XAxis
+              dataKey="time"
+              tickFormatter={(time) => time.replace("T", " ")} // 使用 tickFormatter 修改时间格式
+            />
+            <YAxis name="总成本 (元)" />
             <Tooltip
-              formatter={(value) => [
-                `${value.toFixed(2)}元/小时`,
-                "总租赁成本",
-              ]}
+              formatter={(value) => [`${value.toFixed(2)}元`, "总租赁成本"]}
             />
             <Legend />
             <Line
@@ -798,9 +763,7 @@ const Dashboard = () => {
         {/* 可选：显示当前总开销 */}
         <div className="mt-4 text-center">
           <span className="text-xl font-semibold">
-            当前总开销:{" "}
-            {totalCostData[totalCostData.length - 1]?.value.toFixed(2) || 0}{" "}
-            元/小时
+            当前总开销: {(resourceCosts[0]?.cost ?? 0).toFixed(2)}元
           </span>
         </div>
       </div>
@@ -822,7 +785,7 @@ const Dashboard = () => {
                 <th className="py-2 px-4 border-b text-left">名称</th>
                 <th className="py-2 px-4 border-b text-left">类型</th>
                 <th className="py-2 px-4 border-b text-left">状态</th>
-                <th className="py-2 px-4 border-b text-left">优先级</th>
+                {/* <th className="py-2 px-4 border-b text-left">优先级</th> */}
                 <th className="py-2 px-4 border-b text-left">资源</th>
                 <th className="py-2 px-4 border-b text-left">等待/执行时间</th>
               </tr>
@@ -850,14 +813,16 @@ const Dashboard = () => {
                         : "失败"}
                     </span>
                   </td>
-                  <td className="py-2 px-4 border-b">{task.priority}</td>
+                  {/* <td className="py-2 px-4 border-b">{task.priority}</td> */}
                   <td className="py-2 px-4 border-b">
                     {task.resource_requirements
                       ? `CPU: ${task.resource_requirements.cpu}核, 内存: ${task.resource_requirements.memory}GB`
                       : "-"}
                   </td>
                   <td className="py-2 px-4 border-b">
-                    {task.waiting_time
+                    {task.waiting_time && task.execution_time
+                      ? `等待: ${task.waiting_time}秒, 执行: ${task.execution_time}秒`
+                      : task.waiting_time
                       ? `等待: ${task.waiting_time}秒`
                       : task.execution_time
                       ? `执行: ${task.execution_time}秒`
