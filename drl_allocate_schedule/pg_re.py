@@ -157,10 +157,9 @@ def launch(pa, pg_resume=None, render=False, repre='compact', end='no_new_job'):
     gamma = 0.98
     # for PPO
     lmbda = 0.95
-    epochs = 10
+    epochs = 5
     eps = 0.2
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
-        "cpu")
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     for ex in range(pa.num_ex):
 
@@ -354,7 +353,7 @@ def main():
     pa.num_seq_per_batch = 10
     pa.output_freq = 50
     pa.batch_size = 10
-
+    
     # pa.max_nw_size = 5
     # pa.job_len = 5
     pa.new_job_rate = 0.3

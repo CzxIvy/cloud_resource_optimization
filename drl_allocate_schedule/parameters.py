@@ -6,8 +6,8 @@ class Parameters:
         self.output_filename = 'model/tmp'
 
         self.num_epochs = 10000         # number of training epochs
-        self.job_min_simu_len = 20
-        self.job_max_simu_len = 80
+        self.job_min_simu_len = 80
+        self.job_max_simu_len = 100
         self.task_max_simu_len = 6
         self.task_min_simu_len = 1
         self.num_ex = 10                # number of sequences
